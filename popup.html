@@ -88,18 +88,42 @@
     }
     .btn-small:hover { background: #1e2d4f; color: #fff; }
 
-    .config-list { max-height: 300px; overflow-y: auto; }
+    .config-list { max-height: 400px; overflow-y: auto; }
     .config-list::-webkit-scrollbar { width: 4px; }
     .config-list::-webkit-scrollbar-thumb { background: #2a2a4a; border-radius: 2px; }
+
+    .accordion { margin-bottom: 6px; border: 1px solid #2a2a4a; border-radius: 8px; overflow: hidden; }
+    .accordion-header {
+      padding: 10px 12px;
+      background: #16213e;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      user-select: none;
+    }
+    .accordion-header:hover { background: #1e2d4f; }
+    .accordion-header span { display: block; }
+    .accordion-arrow {
+      font-size: 10px;
+      color: #7f8fa6;
+      transition: transform 0.2s;
+      flex-shrink: 0;
+    }
+    .accordion.open .accordion-arrow { transform: rotate(90deg); }
+    .accordion-title { font-weight: 600; font-size: 12px; color: #e0e0e0; flex: 1; }
+    .accordion-title__subname { font-size: 10px; color: #7f8fa6; }
+    .accordion-count { font-size: 11px; color: #7f8fa6; flex-shrink: 0; }
+    .accordion-body { padding: 10px 12px; display: none; }
+    .accordion.open .accordion-body { display: block; }
+    .config-group-name
 
     .config-item {
       padding: 10px 12px;
       background: #0f0f23;
-      border: 1px solid #2a2a4a;
-      border-radius: 8px;
-      margin-bottom: 6px;
+      border-top: 1px solid #2a2a4a;
     }
-    .config-item:hover { border-color: #533483; }
+    .config-item:hover { background: #131330; }
     .config-name { font-weight: 600; font-size: 13px; color: #e0e0e0; margin-bottom: 2px; }
     .config-meta { font-size: 11px; color: #666; }
     .config-actions { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }

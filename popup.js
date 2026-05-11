@@ -79,27 +79,46 @@
       return;
     }
 
-    configList.innerHTML = res.configs
-      .slice()
-      .reverse()
-      .map(
-        (c) => `
-      <div class="config-item" data-index="${c.index}">
-        <div class="config-name">${escapeHtml(c.name)}</div>
-        <div class="config-meta">
-          ${c.designName ? escapeHtml(c.designName) : ""}${c.customizableName ? " · " + escapeHtml(c.customizableName) : ""} · ${c.paramCount} params · ${formatDate(c.savedAt)}
+    const configs = res.configs.slice().reverse();
+
+    // Group by designName + customizableName
+    const groups = new Map();
+    for (const c of configs) {
+      const key = "<span class='accordion-title__main'>" + escapeHtml(c.designName || "Unknown Design") + "</span><span class='accordion-title__subname'>" + escapeHtml(c.customizableName || "unknown.scad") + "</span>";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(c);
+    }
+
+    let html = "";
+    let groupIndex = 0;
+    for (const [groupName, items] of groups) {
+      const isOpen = "";
+      html += `<div class="accordion${isOpen}">
+        <div class="accordion-header">
+          <span class="accordion-arrow">&#9654;</span>
+          <span class="accordion-title">${groupName}</span>
+          <span class="accordion-count">${items.length}</span>
         </div>
-        <div class="config-actions">
-          <button class="btn-load" data-action="restore" data-index="${c.index}">⬆ Load</button>
-          <button class="btn-small" data-action="diff" data-index="${c.index}">Diff</button>
-          <button class="btn-small" data-action="export" data-index="${c.index}">Export</button>
-          <button class="btn-small" data-action="copyPayload" data-index="${c.index}">Copy Payload</button>
-          <button class="btn-danger" data-action="delete" data-index="${c.index}">Delete</button>
-        </div>
-      </div>
-    `
-      )
-      .join("");
+        <div class="accordion-body">`;
+      for (const c of items) {
+        html += `
+          <div class="config-item" data-index="${c.index}">
+            <div class="config-name">${escapeHtml(c.name)}</div>
+            <div class="config-meta">${c.paramCount} params · ${formatDate(c.savedAt)}</div>
+            <div class="config-actions">
+              <button class="btn-load" data-action="restore" data-index="${c.index}">⬆ Load</button>
+              <button class="btn-small" data-action="diff" data-index="${c.index}">Diff</button>
+              <button class="btn-small" data-action="export" data-index="${c.index}">Export</button>
+              <button class="btn-small" data-action="copyPayload" data-index="${c.index}">Copy Payload</button>
+              <button class="btn-danger" data-action="delete" data-index="${c.index}">Delete</button>
+            </div>
+          </div>`;
+      }
+      html += `</div></div>`;
+      groupIndex++;
+    }
+
+    configList.innerHTML = html;
   }
 
   // ── Save ─────────────────────────────────────────────────────────────
@@ -124,6 +143,9 @@
   // ── Config actions ──────────────────────────────────────────────────
 
   configList.addEventListener("click", async (e) => {
+    const header = e.target.closest(".accordion-header");
+    if (header) { header.parentElement.classList.toggle("open"); return; }
+
     const btn = e.target.closest("[data-action]");
     if (!btn) return;
 

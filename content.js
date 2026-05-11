@@ -266,6 +266,36 @@
         return true;
       }
 
+      case "exportAllConfigs": {
+        chrome.storage.local.get({ savedConfigs: [] }, (data) => {
+          if (!data.savedConfigs.length) {
+            sendResponse({ ok: false, error: "No configs to export." });
+            return;
+          }
+          sendResponse({
+            ok: true,
+            json: JSON.stringify(data.savedConfigs, null, 2),
+            count: data.savedConfigs.length,
+          });
+        });
+        return true;
+      }
+
+      case "importAllConfigs": {
+        const configs = msg.configs;
+        if (!Array.isArray(configs) || !configs.length) {
+          sendResponse({ ok: false, error: "No valid configs found in file." });
+          return;
+        }
+        chrome.storage.local.get({ savedConfigs: [] }, (data) => {
+          const merged = data.savedConfigs.concat(configs);
+          chrome.storage.local.set({ savedConfigs: merged }, () => {
+            sendResponse({ ok: true, imported: configs.length, total: merged.length });
+          });
+        });
+        return true;
+      }
+
       case "restoreConfig": {
         chrome.storage.local.get({ savedConfigs: [] }, (data) => {
           const config = data.savedConfigs[msg.index];

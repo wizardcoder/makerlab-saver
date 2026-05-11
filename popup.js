@@ -280,51 +280,83 @@
     }
   });
 
-  // ── Import ───────────────────────────────────────────────────────────
+  // ── Export All / Import All ───────────────────────────────────────────
 
-  const importBtn = $("#importBtn");
-  const importFile = $("#importFile");
+  const exportAllBtn = $("#exportAllBtn");
+  const importAllBtn = $("#importAllBtn");
+  const importAllFile = $("#importAllFile");
 
-  importBtn.addEventListener("click", () => importFile.click());
+  exportAllBtn.addEventListener("click", () => {
+    chrome.storage.local.get({ savedConfigs: [] }, (data) => {
+      if (!data.savedConfigs.length) { showToast("No configs to export.", "error"); return; }
+      const blob = new Blob([JSON.stringify(data.savedConfigs, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `makerlab-all-configs-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast(`Exported ${data.savedConfigs.length} configs.`);
+    });
+  });
 
-  importFile.addEventListener("change", async (e) => {
+  importAllBtn.addEventListener("click", () => importAllFile.click());
+
+  importAllFile.addEventListener("change", async (e) => {
     const file = e.target.files[0];
     if (!file) return;
 
     try {
       const text = await file.text();
-      const config = JSON.parse(text);
+      const parsed = JSON.parse(text);
 
-      // Validate it looks like a saved config
-      if (!config.params || !Array.isArray(config.params)) {
-        showToast("Invalid config file — missing params.", "error");
+      // Support both single config and array of configs
+      const configs = Array.isArray(parsed) ? parsed : [parsed];
+
+      // Validate each config has params
+      const valid = configs.filter((c) => c.params && Array.isArray(c.params));
+      if (!valid.length) {
+        showToast("No valid configs found in file.", "error");
         return;
       }
 
-      // Ensure required fields exist
-      config.name = config.name || file.name.replace(/\.json$/, "");
-      config.savedAt = config.savedAt || new Date().toISOString();
-      config.designId = config.designId || null;
-      config.paramsRaw = config.paramsRaw || "";
-      config.type = config.type || "obj";
-      config.color = config.color || "";
-      config.rawPayload = config.rawPayload || "";
-      config.code = config.code || "";
-
-      // Save to storage via content script
-      const res = await sendToContent({ action: "importConfig", config });
-      if (res.ok) {
-        showToast(`Imported "${config.name}" (${config.params.length} params)`);
-        loadConfigs();
-      } else {
-        showToast(res.error || "Import failed.", "error");
+      // Ensure required fields on each
+      for (const config of valid) {
+        config.name = config.name || "Imported Config";
+        config.savedAt = config.savedAt || new Date().toISOString();
+        config.designId = config.designId || null;
+        config.paramsRaw = config.paramsRaw || "";
+        config.type = config.type || "obj";
+        config.color = config.color || "";
+        config.rawPayload = config.rawPayload || "";
+        config.code = config.code || "";
       }
+
+      chrome.storage.local.get({ savedConfigs: [] }, (data) => {
+        const existing = new Set(
+          data.savedConfigs.map((c) => `${c.name}|${c.designId}|${c.savedAt}`)
+        );
+        const fresh = valid.filter(
+          (c) => !existing.has(`${c.name}|${c.designId}|${c.savedAt}`)
+        );
+        if (!fresh.length) {
+          showToast("All configs already exist — nothing imported.", "info");
+          return;
+        }
+        const merged = data.savedConfigs.concat(fresh);
+        chrome.storage.local.set({ savedConfigs: merged }, () => {
+          const skipped = valid.length - fresh.length;
+          let msg = `Imported ${fresh.length} config${fresh.length === 1 ? "" : "s"}.`;
+          if (skipped) msg += ` ${skipped} duplicate${skipped === 1 ? "" : "s"} skipped.`;
+          showToast(msg);
+          loadConfigs();
+        });
+      });
     } catch (err) {
       showToast("Failed to parse JSON file.", "error");
     }
 
-    // Reset file input so the same file can be re-imported
-    importFile.value = "";
+    importAllFile.value = "";
   });
 
   // ── Init ─────────────────────────────────────────────────────────────

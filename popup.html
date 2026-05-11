@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      width: 400px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, sans-serif;
+      font-size: 13px;
+      color: #e0e0e0;
+      background: #1a1a2e;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #16213e, #0f3460);
+      padding: 14px 16px;
+      border-bottom: 1px solid #0f3460;
+    }
+    .header h1 { font-size: 15px; font-weight: 600; color: #fff; letter-spacing: 0.3px; }
+    .header .subtitle { font-size: 11px; color: #7f8fa6; margin-top: 2px; }
+
+    .status-bar {
+      padding: 10px 16px;
+      background: #16213e;
+      border-bottom: 1px solid #0f3460;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #e74c3c;
+      flex-shrink: 0;
+    }
+    .status-dot.captured { background: #2ecc71; }
+    .status-text { font-size: 12px; color: #aaa; flex: 1; }
+
+    .section {
+      padding: 12px 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+    }
+    .section-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: #7f8fa6;
+      margin-bottom: 8px;
+    }
+
+    .save-row { display: flex; gap: 6px; }
+    .save-row input {
+      flex: 1;
+      padding: 7px 10px;
+      border: 1px solid #2a2a4a;
+      border-radius: 6px;
+      background: #0f0f23;
+      color: #e0e0e0;
+      font-size: 12px;
+      outline: none;
+    }
+    .save-row input:focus { border-color: #533483; }
+    .save-row input::placeholder { color: #555; }
+
+    button {
+      padding: 7px 14px;
+      border: none;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-primary { background: #533483; color: #fff; }
+    .btn-primary:hover { background: #6a42a0; }
+    .btn-primary:disabled { background: #2a2a4a; color: #555; cursor: not-allowed; }
+    .btn-load { background: #0f3460; color: #4fc3f7; border: 1px solid #1a5276; }
+    .btn-load:hover { background: #1a5276; color: #fff; }
+    .btn-danger { background: transparent; color: #e74c3c; padding: 4px 8px; font-size: 11px; }
+    .btn-danger:hover { background: rgba(231,76,60,0.15); }
+    .btn-small {
+      background: #16213e; color: #aaa;
+      padding: 4px 10px; font-size: 11px;
+      border: 1px solid #2a2a4a;
+    }
+    .btn-small:hover { background: #1e2d4f; color: #fff; }
+
+    .config-list { max-height: 300px; overflow-y: auto; }
+    .config-list::-webkit-scrollbar { width: 4px; }
+    .config-list::-webkit-scrollbar-thumb { background: #2a2a4a; border-radius: 2px; }
+
+    .config-item {
+      padding: 10px 12px;
+      background: #0f0f23;
+      border: 1px solid #2a2a4a;
+      border-radius: 8px;
+      margin-bottom: 6px;
+    }
+    .config-item:hover { border-color: #533483; }
+    .config-name { font-weight: 600; font-size: 13px; color: #e0e0e0; margin-bottom: 2px; }
+    .config-meta { font-size: 11px; color: #666; }
+    .config-actions { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }
+
+    .empty-state { text-align: center; padding: 20px; color: #555; font-size: 12px; }
+
+    .toast {
+      position: fixed; bottom: 12px; left: 16px; right: 16px;
+      padding: 10px 14px;
+      background: #2ecc71; color: #000;
+      border-radius: 8px; font-size: 12px; font-weight: 500; text-align: center;
+      transform: translateY(60px); opacity: 0;
+      transition: all 0.25s; z-index: 100;
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.error { background: #e74c3c; color: #fff; }
+    .toast.info { background: #3498db; color: #fff; }
+
+    .diff-table { width: 100%; font-size: 11px; border-collapse: collapse; margin-top: 6px; }
+    .diff-table th {
+      text-align: left; padding: 4px 6px; color: #7f8fa6;
+      border-bottom: 1px solid #2a2a4a; font-weight: 600;
+    }
+    .diff-table td {
+      padding: 3px 6px;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+      word-break: break-all;
+    }
+    .diff-table .val-saved { color: #e74c3c; }
+    .diff-table .val-current { color: #2ecc71; }
+    .diff-section {
+      max-height: 200px; overflow-y: auto; margin-top: 8px;
+      background: #0f0f23; border-radius: 6px; padding: 6px;
+    }
+
+    .restore-summary {
+      margin-top: 8px; padding: 8px 10px;
+      background: #0f0f23; border-radius: 6px;
+      font-size: 11px; line-height: 1.6;
+    }
+    .restore-summary .stat { color: #7f8fa6; }
+    .restore-summary .ok { color: #2ecc71; }
+    .restore-summary .fail { color: #e74c3c; }
+    .restore-summary .skip { color: #f39c12; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>MakerLab Config Saver</h1>
+  <div class="subtitle">Save &amp; restore MakerLab customisations</div>
+</div>
+
+<div class="status-bar">
+  <div class="status-dot" id="statusDot"></div>
+  <div class="status-text" id="statusText">Checking…</div>
+</div>
+
+<div class="section">
+  <div class="section-title">Save Current Config</div>
+  <div class="save-row">
+    <input type="text" id="configName" placeholder="Config name…" />
+    <button class="btn-primary" id="saveBtn" disabled>Save</button>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">Saved Configs</div>
+  <div style="margin-bottom: 8px;">
+    <button class="btn-small" id="importBtn">Import JSON</button>
+    <input type="file" id="importFile" accept=".json" style="display:none;" />
+  </div>
+  <div class="config-list" id="configList">
+    <div class="empty-state">No saved configs yet</div>
+  </div>
+</div>
+
+<div id="resultSection" class="section" style="display:none;">
+  <div class="section-title" id="resultTitle">Result</div>
+  <div id="resultContent"></div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="popup.js"></script>
+</body>
+</html>

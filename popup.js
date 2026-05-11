@@ -80,6 +80,8 @@
     }
 
     configList.innerHTML = res.configs
+      .slice()
+      .reverse()
       .map(
         (c) => `
       <div class="config-item" data-index="${c.index}">

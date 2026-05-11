@@ -7,9 +7,11 @@
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   function getDesignName() {
-    const el = document.querySelector("div[aria-label]");
-    if (el && el.textContent.trim() && el.children.length === 0) {
-      return el.textContent.trim();
+    const candidates = document.querySelectorAll("div[aria-label]");
+    for (const el of candidates) {
+      if (el.children.length > 0) continue;
+      const text = el.textContent.trim();
+      if (text && el.getAttribute("aria-label") === text) return text;
     }
     return "";
   }

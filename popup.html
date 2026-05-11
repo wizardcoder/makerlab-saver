@@ -129,6 +129,16 @@
     .config-actions { display: flex; gap: 4px; margin-top: 8px; flex-wrap: wrap; }
 
     .empty-state { text-align: center; padding: 20px; color: #555; font-size: 12px; }
+    .storage-warning {
+      margin-top: 8px;
+      padding: 8px 10px;
+      font-size: 11px;
+      color: #f39c12;
+      background: rgba(243, 156, 18, 0.08);
+      border: 1px solid rgba(243, 156, 18, 0.2);
+      border-radius: 6px;
+      line-height: 1.4;
+    }
 
     .toast {
       position: fixed; bottom: 12px; left: 16px; right: 16px;
@@ -199,6 +209,7 @@
   <div class="config-list" id="configList">
     <div class="empty-state">No saved configs yet</div>
   </div>
+  <div class="storage-warning" id="storageWarning" style="display:none;">Saves are stored locally and will be lost if the extension is uninstalled. Use Export to back up important configs.</div>
 </div>
 
 <div id="resultSection" class="section" style="display:none;">

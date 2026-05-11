@@ -13,6 +13,7 @@
   const resultTitle = $("#resultTitle");
   const resultContent = $("#resultContent");
   const toast = $("#toast");
+  const storageWarning = $("#storageWarning");
 
   let hasCapture = false;
 
@@ -76,8 +77,11 @@
     const res = await sendToContent({ action: "listConfigs" });
     if (!res.ok || !res.configs.length) {
       configList.innerHTML = '<div class="empty-state">No saved configs yet</div>';
+      storageWarning.style.display = "none";
       return;
     }
+
+    storageWarning.style.display = "block";
 
     const configs = res.configs.slice().reverse();
 

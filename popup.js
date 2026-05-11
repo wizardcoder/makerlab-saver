@@ -49,10 +49,19 @@
     });
   }
 
+  const _escDiv = document.createElement("div");
   function escapeHtml(str) {
-    const div = document.createElement("div");
-    div.textContent = str;
-    return div.innerHTML;
+    _escDiv.textContent = str;
+    return _escDiv.innerHTML;
+  }
+
+  function downloadJson(json, filename) {
+    const url = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   // ── Status ──────────────────────────────────────────────────────────
@@ -88,19 +97,19 @@
     // Group by designName + customizableName
     const groups = new Map();
     for (const c of configs) {
-      const key = "<span class='accordion-title__main'>" + escapeHtml(c.designName || "Unknown Design") + "</span><span class='accordion-title__subname'>" + escapeHtml(c.customizableName || "unknown.scad") + "</span>";
+      const key = (c.designName || "Unknown Design") + "|" + (c.customizableName || "unknown.scad");
       if (!groups.has(key)) groups.set(key, []);
       groups.get(key).push(c);
     }
 
     let html = "";
-    let groupIndex = 0;
-    for (const [groupName, items] of groups) {
-      const isOpen = "";
-      html += `<div class="accordion${isOpen}">
+    for (const [groupKey, items] of groups) {
+      const [designName, customizableName] = groupKey.split("|");
+      const titleHtml = `<span class='accordion-title__main'>${escapeHtml(designName)}</span><span class='accordion-title__subname'>${escapeHtml(customizableName)}</span>`;
+      html += `<div class="accordion">
         <div class="accordion-header">
           <span class="accordion-arrow">&#9654;</span>
-          <span class="accordion-title">${groupName}</span>
+          <span class="accordion-title">${titleHtml}</span>
           <span class="accordion-count">${items.length}</span>
         </div>
         <div class="accordion-body">`;
@@ -119,7 +128,6 @@
           </div>`;
       }
       html += `</div></div>`;
-      groupIndex++;
     }
 
     configList.innerHTML = html;
@@ -242,13 +250,7 @@
       case "export": {
         const res = await sendToContent({ action: "exportConfig", index });
         if (!res.ok) { showToast(res.error, "error"); return; }
-        const blob = new Blob([res.json], { type: "application/json" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = res.filename;
-        a.click();
-        URL.revokeObjectURL(url);
+        downloadJson(res.json, res.filename);
         showToast("Exported!");
         break;
       }
@@ -289,13 +291,7 @@
   exportAllBtn.addEventListener("click", () => {
     chrome.storage.local.get({ savedConfigs: [] }, (data) => {
       if (!data.savedConfigs.length) { showToast("No configs to export.", "error"); return; }
-      const blob = new Blob([JSON.stringify(data.savedConfigs, null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `makerlab-all-configs-${new Date().toISOString().slice(0, 10)}.json`;
-      a.click();
-      URL.revokeObjectURL(url);
+      downloadJson(JSON.stringify(data.savedConfigs, null, 2), `makerlab-all-configs-${new Date().toISOString().slice(0, 10)}.json`);
       showToast(`Exported ${data.savedConfigs.length} configs.`);
     });
   });

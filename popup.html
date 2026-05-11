@@ -116,8 +116,6 @@
     .accordion-count { font-size: 11px; color: #7f8fa6; flex-shrink: 0; }
     .accordion-body { padding: 10px 12px; display: none; }
     .accordion.open .accordion-body { display: block; }
-    .config-group-name
-
     .config-item {
       padding: 10px 12px;
       background: #0f0f23;
@@ -139,6 +137,18 @@
       border-radius: 6px;
       line-height: 1.4;
     }
+    .coffee-link {
+      text-align: center;
+      padding: 10px 16px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+    .coffee-link a {
+      color: #7f8fa6;
+      text-decoration: none;
+      font-size: 12px;
+      transition: color 0.15s;
+    }
+    .coffee-link a:hover { color: #f39c12; }
 
     .toast {
       position: fixed; bottom: 12px; left: 16px; right: 16px;
@@ -216,6 +226,10 @@
 <div id="resultSection" class="section" style="display:none;">
   <div class="section-title" id="resultTitle">Result</div>
   <div id="resultContent"></div>
+</div>
+
+<div class="coffee-link">
+  <a href="https://paypal.me/wizardcoder" target="_blank">&#9749; Buy me a coffee</a>
 </div>
 
 <div class="toast" id="toast"></div>

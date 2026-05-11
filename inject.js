@@ -7,12 +7,15 @@
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   function getDesignName() {
-    const el = document.querySelector('.mw-css-1ab7fra[aria-label]');
-    return el ? el.textContent.trim() : "";
+    const el = document.querySelector("div[aria-label]");
+    if (el && el.textContent.trim() && el.children.length === 0) {
+      return el.textContent.trim();
+    }
+    return "";
   }
 
   function getCustomizableName() {
-    const input = document.querySelector('.MuiAutocomplete-inputRoot input[role="combobox"]');
+    const input = document.querySelector('input[role="combobox"]');
     return input ? input.value.trim() : "";
   }
 
@@ -80,60 +83,73 @@
     return name.replace(/_/g, " ").toLowerCase();
   }
 
+  function isLabelDiv(el, container) {
+    if (el.tagName !== "DIV") return false;
+    if (el.children.length > 0) return false;
+    const text = el.textContent.trim();
+    if (text.length === 0 || text.length > 80) return false;
+    // Reject divs nested inside interactive controls
+    let parent = el.parentElement;
+    while (parent && parent !== container) {
+      const role = parent.getAttribute("role");
+      if (role === "combobox" || role === "listbox" || role === "option") return false;
+      if (parent.tagName === "BUTTON") return false;
+      parent = parent.parentElement;
+    }
+    return true;
+  }
+
+  function findLabelIn(container) {
+    const divs = container.querySelectorAll("div");
+    for (const div of divs) {
+      if (isLabelDiv(div, container)) return div;
+    }
+    return null;
+  }
+
   function findAllFields() {
     const fields = {};
+    const allInputs = document.querySelectorAll("input");
 
-    // Pass 1: text inputs and selects via the reliable column wrapper
-    const columnWrappers = document.querySelectorAll(
-      'div[style*="flex-direction: column"]'
-    );
-    for (const wrapper of columnWrappers) {
-      const labelEl = wrapper.querySelector(
-        'div[style*="font-weight: 600"][style*="font-size: 14px"]'
-      );
-      if (!labelEl) continue;
+    for (const input of allInputs) {
+      if (input.type === "hidden") continue;
 
-      const label = labelEl.textContent.trim().toLowerCase();
-      if (!label) continue;
+      const wrapper = input.closest("div");
+      if (!wrapper) continue;
 
-      const textInput = wrapper.querySelector("input.mw-css-528tg4");
-      const selectNative = wrapper.querySelector(
-        'input[class*="Select-nativeInput"]'
-      );
-      const combobox = wrapper.querySelector('[role="combobox"]');
-
-      if (textInput) {
-        fields[label] = { type: "text", element: textInput, wrapper };
-      } else if (selectNative && combobox) {
-        fields[label] = {
-          type: "select",
-          element: selectNative,
-          combobox,
-          wrapper,
-        };
+      // Walk up to find a container that also holds a label div
+      let container = wrapper;
+      let labelEl = null;
+      for (let i = 0; i < 5; i++) {
+        labelEl = findLabelIn(container);
+        if (labelEl && labelEl !== input) break;
+        labelEl = null;
+        if (!container.parentElement) break;
+        container = container.parentElement;
+        if (container.tagName !== "DIV") break;
       }
-    }
 
-    // Pass 2: checkboxes/switches via the space-between row wrapper
-    const rowWrappers = document.querySelectorAll(
-      'div[style*="justify-content: space-between"]'
-    );
-    for (const wrapper of rowWrappers) {
-      const labelEl = wrapper.querySelector(
-        'div[style*="font-weight: 600"][style*="font-size: 14px"]'
-      );
       if (!labelEl) continue;
-
       const label = labelEl.textContent.trim().toLowerCase();
       if (!label || fields[label]) continue;
 
-      const checkbox =
-        wrapper.querySelector("input.MuiSwitch-input") ||
-        wrapper.querySelector('.MuiCheckbox-root input[type="checkbox"]') ||
-        wrapper.querySelector('input[type="checkbox"]');
-
-      if (checkbox) {
-        fields[label] = { type: "checkbox", element: checkbox, wrapper };
+      if (input.type === "checkbox") {
+        fields[label] = { type: "checkbox", element: input, wrapper: container };
+      } else if (input.getAttribute("role") === "combobox") {
+        // Skip the autocomplete/file-selector combobox (no hidden sibling)
+        continue;
+      } else {
+        const combobox = container.querySelector('[role="combobox"]');
+        if (combobox) {
+          fields[label] = {
+            type: "select",
+            element: input,
+            combobox,
+            wrapper: container,
+          };
+        } else if (input.offsetParent !== null) {
+          fields[label] = { type: "text", element: input, wrapper: container };
+        }
       }
     }
 
@@ -195,19 +211,14 @@
     }
 
     if (!matched) {
-      // Close dropdown with Escape on the body/backdrop
-      const backdrop = document.querySelector(".MuiBackdrop-root, .MuiModal-backdrop");
-      if (backdrop) {
-        backdrop.click();
-      } else {
-        document.body.dispatchEvent(
-          new KeyboardEvent("keydown", {
-            key: "Escape",
-            keyCode: 27,
-            bubbles: true,
-          })
-        );
-      }
+      // Close dropdown with Escape
+      document.body.dispatchEvent(
+        new KeyboardEvent("keydown", {
+          key: "Escape",
+          keyCode: 27,
+          bubbles: true,
+        })
+      );
       // Also try pressing Escape on the listbox parent
       await sleep(50);
       const stillOpen = document.querySelector('[role="listbox"]');
@@ -238,12 +249,10 @@
   function setCheckbox(input, value) {
     const target = value === true || value === "true";
     if (input.checked !== target) {
-      // Try clicking the input first
       input.click();
-      // If that didn't work, try clicking the MUI Switch parent
       if (input.checked !== target) {
-        const switchBase = input.closest(".MuiSwitch-switchBase");
-        if (switchBase) switchBase.click();
+        const parent = input.closest("span");
+        if (parent) parent.click();
       }
     }
   }

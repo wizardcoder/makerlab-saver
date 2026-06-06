@@ -18,6 +18,20 @@
 
   let lastCapturedPayload = null;
   let pendingRestoreCallback = null;
+  let pendingDesignInfoCallback = null;
+
+  function queryDesignInfo() {
+    return new Promise((resolve) => {
+      pendingDesignInfoCallback = resolve;
+      window.postMessage({ channel: CHANNEL, type: "queryDesignInfo" }, "*");
+      setTimeout(() => {
+        if (pendingDesignInfoCallback) {
+          pendingDesignInfoCallback({ designName: "", customizableName: "" });
+          pendingDesignInfoCallback = null;
+        }
+      }, 1000);
+    });
+  }
 
   // ── Listen for messages from injected page script ───────────────────
 
@@ -36,6 +50,14 @@
     if (event.data.type === "restoreResult" && pendingRestoreCallback) {
       pendingRestoreCallback(event.data.results);
       pendingRestoreCallback = null;
+    }
+
+    if (event.data.type === "designInfoResult" && pendingDesignInfoCallback) {
+      pendingDesignInfoCallback({
+        designName: event.data.designName,
+        customizableName: event.data.customizableName,
+      });
+      pendingDesignInfoCallback = null;
     }
   });
 
@@ -150,17 +172,21 @@
           sendResponse({ ok: false, error: "No config captured yet. Change an option in MakerLab and click Generate to capture." });
           return;
         }
-        const params = parseOpenSCADParams(lastCapturedPayload.code, lastCapturedPayload.params);
-        sendResponse({
-          ok: true,
-          designId: lastCapturedPayload.designId,
-          designName: lastCapturedPayload.designName || "",
-          customizableName: lastCapturedPayload.customizableName || "",
-          capturedAt: lastCapturedPayload.capturedAt,
-          params,
-          paramCount: params.length,
+        queryDesignInfo().then((info) => {
+          if (info.designName) lastCapturedPayload.designName = info.designName;
+          if (info.customizableName) lastCapturedPayload.customizableName = info.customizableName;
+          const params = parseOpenSCADParams(lastCapturedPayload.code, lastCapturedPayload.params);
+          sendResponse({
+            ok: true,
+            designId: lastCapturedPayload.designId,
+            designName: lastCapturedPayload.designName || "",
+            customizableName: lastCapturedPayload.customizableName || "",
+            capturedAt: lastCapturedPayload.capturedAt,
+            params,
+            paramCount: params.length,
+          });
         });
-        return;
+        return true;
       }
 
       case "saveConfig": {
@@ -168,25 +194,29 @@
           sendResponse({ ok: false, error: "Nothing captured to save." });
           return;
         }
-        const params = parseOpenSCADParams(lastCapturedPayload.code, lastCapturedPayload.params);
-        const configToSave = {
-          name: msg.name || `Config ${new Date().toLocaleString()}`,
-          designId: lastCapturedPayload.designId,
-          designName: lastCapturedPayload.designName || "",
-          customizableName: lastCapturedPayload.customizableName || "",
-          params,
-          paramsRaw: lastCapturedPayload.params,
-          type: lastCapturedPayload.type,
-          color: lastCapturedPayload.color,
-          savedAt: new Date().toISOString(),
-          capturedAt: lastCapturedPayload.capturedAt,
-          rawPayload: lastCapturedPayload.rawPayload,
-          code: lastCapturedPayload.code,
-        };
-        chrome.storage.local.get({ savedConfigs: [] }, (data) => {
-          data.savedConfigs.push(configToSave);
-          chrome.storage.local.set({ savedConfigs: data.savedConfigs }, () => {
-            sendResponse({ ok: true, total: data.savedConfigs.length });
+        queryDesignInfo().then((info) => {
+          if (info.designName) lastCapturedPayload.designName = info.designName;
+          if (info.customizableName) lastCapturedPayload.customizableName = info.customizableName;
+          const params = parseOpenSCADParams(lastCapturedPayload.code, lastCapturedPayload.params);
+          const configToSave = {
+            name: msg.name || `Config ${new Date().toLocaleString()}`,
+            designId: lastCapturedPayload.designId,
+            designName: lastCapturedPayload.designName || "",
+            customizableName: lastCapturedPayload.customizableName || "",
+            params,
+            paramsRaw: lastCapturedPayload.params,
+            type: lastCapturedPayload.type,
+            color: lastCapturedPayload.color,
+            savedAt: new Date().toISOString(),
+            capturedAt: lastCapturedPayload.capturedAt,
+            rawPayload: lastCapturedPayload.rawPayload,
+            code: lastCapturedPayload.code,
+          };
+          chrome.storage.local.get({ savedConfigs: [] }, (data) => {
+            data.savedConfigs.push(configToSave);
+            chrome.storage.local.set({ savedConfigs: data.savedConfigs }, () => {
+              sendResponse({ ok: true, total: data.savedConfigs.length });
+            });
           });
         });
         return true;

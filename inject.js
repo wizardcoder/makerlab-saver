@@ -394,6 +394,18 @@
       );
     }
 
+    if (event.data.type === "queryDesignInfo") {
+      window.postMessage(
+        {
+          channel: CHANNEL,
+          type: "designInfoResult",
+          designName: getDesignName(),
+          customizableName: getCustomizableName(),
+        },
+        "*"
+      );
+    }
+
     if (event.data.type === "scanFields") {
       const fields = findAllFields();
       const list = Object.entries(fields).map(([label, f]) => ({

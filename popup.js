@@ -6,6 +6,7 @@
   const $ = (sel) => document.querySelector(sel);
   const statusDot = $("#statusDot");
   const statusText = $("#statusText");
+  const saveSection = $("#saveSection");
   const configName = $("#configName");
   const saveBtn = $("#saveBtn");
   const configList = $("#configList");
@@ -16,6 +17,9 @@
   const storageWarning = $("#storageWarning");
 
   let hasCapture = false;
+  let onMakerLab = false;
+  let currentDesignId = null;
+  let currentCustomizableName = null;
 
   function showToast(message, type = "") {
     toast.textContent = message;
@@ -64,73 +68,131 @@
     URL.revokeObjectURL(url);
   }
 
+  function getStoredConfigs() {
+    return new Promise((resolve) => {
+      chrome.storage.local.get({ savedConfigs: [] }, (data) => {
+        resolve(data.savedConfigs);
+      });
+    });
+  }
+
   // ── Status ──────────────────────────────────────────────────────────
 
   async function checkStatus() {
     const res = await sendToContent({ action: "getLastCapture" });
     if (res.ok) {
+      onMakerLab = true;
       hasCapture = true;
+      currentDesignId = res.designId;
+      currentCustomizableName = res.customizableName || null;
       statusDot.classList.add("captured");
       statusText.textContent = `Captured: ${res.designName || "Design " + (res.designId || "?")} — ${res.paramCount} params`;
       saveBtn.disabled = false;
-    } else {
+      saveSection.style.display = "";
+    } else if (res.error && !res.error.includes("Not on a MakerWorld")) {
+      onMakerLab = true;
       statusDot.classList.remove("captured");
       statusText.textContent = res.error || "No capture yet.";
       saveBtn.disabled = true;
+      saveSection.style.display = "";
+    } else {
+      onMakerLab = false;
+      statusDot.classList.remove("captured");
+      statusText.textContent = "Not on a MakerLab page. Viewing all saved configs.";
+      saveSection.style.display = "none";
     }
+    loadConfigs();
   }
 
   // ── List configs ────────────────────────────────────────────────────
 
-  async function loadConfigs() {
-    const res = await sendToContent({ action: "listConfigs" });
-    if (!res.ok || !res.configs.length) {
+  function renderConfigs(allConfigs, filterDesignId, filterCustomizable) {
+    if (!allConfigs.length) {
       configList.innerHTML = '<div class="empty-state">No saved configs yet</div>';
+      storageWarning.style.display = "none";
+      return;
+    }
+
+    const indexed = allConfigs.map((c, i) => ({ ...c, index: i })).reverse();
+
+    let visible;
+    if (filterDesignId) {
+      visible = indexed.filter((c) =>
+        c.designId === filterDesignId &&
+        (!filterCustomizable || c.customizableName === filterCustomizable)
+      );
+    } else {
+      visible = indexed;
+    }
+
+    if (!visible.length) {
+      configList.innerHTML = filterDesignId
+        ? '<div class="empty-state">No saved configs for this customiser</div>'
+        : '<div class="empty-state">No saved configs yet</div>';
       storageWarning.style.display = "none";
       return;
     }
 
     storageWarning.style.display = "block";
 
-    const configs = res.configs.slice().reverse();
-
-    // Group by designName + customizableName
-    const groups = new Map();
-    for (const c of configs) {
-      const key = (c.designName || "Unknown Design") + "|" + (c.customizableName || "unknown.scad");
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(c);
-    }
-
     let html = "";
-    for (const [groupKey, items] of groups) {
-      const [designName, customizableName] = groupKey.split("|");
-      const titleHtml = `<span class='accordion-title__main'>${escapeHtml(designName)}</span><span class='accordion-title__subname'>${escapeHtml(customizableName)}</span>`;
-      html += `<div class="accordion">
-        <div class="accordion-header">
-          <span class="accordion-arrow">&#9654;</span>
-          <span class="accordion-title">${titleHtml}</span>
-          <span class="accordion-count">${items.length}</span>
-        </div>
-        <div class="accordion-body">`;
-      for (const c of items) {
-        html += `
-          <div class="config-item" data-index="${c.index}">
-            <div class="config-name">${escapeHtml(c.name)}</div>
-            <div class="config-meta">${c.paramCount} params · ${formatDate(c.savedAt)}</div>
-            <div class="config-actions">
-              <button class="btn-load" data-action="restore" data-index="${c.index}">⬆ Load</button>
-              <button class="btn-small" data-action="diff" data-index="${c.index}">Diff</button>
-              <button class="btn-small" data-action="export" data-index="${c.index}">Export</button>
-              <button class="btn-small" data-action="copyPayload" data-index="${c.index}">Copy Payload</button>
-              <button class="btn-danger" data-action="delete" data-index="${c.index}">Delete</button>
-            </div>
-          </div>`;
+
+    if (filterDesignId) {
+      html += renderGroup(visible, true, false);
+    } else {
+      const groups = new Map();
+      for (const c of visible) {
+        const key = (c.designName || "Unknown Design") + "|" + (c.customizableName || "unknown.scad");
+        if (!groups.has(key)) groups.set(key, []);
+        groups.get(key).push(c);
       }
-      html += `</div></div>`;
+      for (const [, items] of groups) {
+        html += renderGroup(items, false, true);
+      }
     }
 
     configList.innerHTML = html;
+  }
+
+  function renderGroup(items, autoOpen, offsite) {
+    const first = items[0];
+    const designName = first.designName || "Unknown Design";
+    const customizableName = first.customizableName || "unknown.scad";
+    const titleHtml = `<span class='accordion-title__main'>${escapeHtml(designName)}</span><span class='accordion-title__subname'>${escapeHtml(customizableName)}</span>`;
+
+    let html = `<div class="accordion${autoOpen ? " open" : ""}">
+      <div class="accordion-header">
+        <span class="accordion-arrow">&#9654;</span>
+        <span class="accordion-title">${titleHtml}</span>
+        <span class="accordion-count">${items.length}</span>
+      </div>
+      <div class="accordion-body">`;
+
+    for (const c of items) {
+      html += `
+        <div class="config-item" data-index="${c.index}">
+          <div class="config-name">${escapeHtml(c.name)}</div>
+          <div class="config-meta">${c.params ? c.params.length : "?"} params · ${formatDate(c.savedAt)}</div>
+          <div class="config-actions">`;
+      if (!offsite) {
+        html += `<button class="btn-load" data-action="restore" data-index="${c.index}">⬆ Load</button>
+            <button class="btn-small" data-action="diff" data-index="${c.index}">Diff</button>`;
+      }
+      html += `<button class="btn-small" data-action="export" data-index="${c.index}">Export</button>`;
+      if (!offsite) {
+        html += `<button class="btn-small" data-action="copyPayload" data-index="${c.index}">Copy Payload</button>`;
+      }
+      html += `<button class="btn-danger" data-action="delete" data-index="${c.index}">Delete</button>
+          </div>
+        </div>`;
+    }
+    html += `</div></div>`;
+    return html;
+  }
+
+  async function loadConfigs() {
+    const allConfigs = await getStoredConfigs();
+    renderConfigs(allConfigs, currentDesignId, currentCustomizableName);
   }
 
   // ── Save ─────────────────────────────────────────────────────────────
@@ -184,8 +246,8 @@
 
         resultTitle.textContent = "Restore Result";
         let html = `<div class="restore-summary">
-          <span class="ok">✓ ${r.matched} set</span> · 
-          <span class="fail">✗ ${r.failed} failed</span> · 
+          <span class="ok">✓ ${r.matched} set</span> ·
+          <span class="fail">✗ ${r.failed} failed</span> ·
           <span class="skip">⊘ ${r.skipped} skipped</span>
         </div>`;
 
@@ -220,8 +282,8 @@
         const res = await sendToContent({ action: "getDiff", index });
         if (!res.ok) { showToast(res.error, "error"); return; }
 
-        const listRes = await sendToContent({ action: "listConfigs" });
-        const cfg = listRes.ok ? listRes.configs.find((c) => c.index === index) : null;
+        const allConfigs = await getStoredConfigs();
+        const cfg = allConfigs[index];
         resultTitle.textContent = `Diff: ${cfg ? cfg.name : "Config"}`;
         resultSection.style.display = "block";
 
@@ -248,18 +310,21 @@
       }
 
       case "export": {
-        const res = await sendToContent({ action: "exportConfig", index });
-        if (!res.ok) { showToast(res.error, "error"); return; }
-        downloadJson(res.json, res.filename);
+        const allConfigs = await getStoredConfigs();
+        const config = allConfigs[index];
+        if (!config) { showToast("Config not found.", "error"); return; }
+        const filename = `makerlab-${(config.name || "config").replace(/[^a-z0-9]/gi, "_")}.json`;
+        downloadJson(JSON.stringify(config, null, 2), filename);
         showToast("Exported!");
         break;
       }
 
       case "copyPayload": {
-        const res = await sendToContent({ action: "loadConfig", index });
-        if (!res.ok) { showToast(res.error, "error"); return; }
+        const allConfigs = await getStoredConfigs();
+        const config = allConfigs[index];
+        if (!config) { showToast("Config not found.", "error"); return; }
         try {
-          await navigator.clipboard.writeText(res.config.rawPayload);
+          await navigator.clipboard.writeText(config.rawPayload);
           showToast("Raw payload copied.");
         } catch {
           showToast("Clipboard write failed.", "error");
@@ -269,14 +334,13 @@
 
       case "delete": {
         if (!confirm("Delete this config?")) return;
-        const res = await sendToContent({ action: "deleteConfig", index });
-        if (res.ok) {
+        const allConfigs = await getStoredConfigs();
+        allConfigs.splice(index, 1);
+        chrome.storage.local.set({ savedConfigs: allConfigs }, () => {
           showToast("Deleted.");
           loadConfigs();
           resultSection.style.display = "none";
-        } else {
-          showToast(res.error, "error");
-        }
+        });
         break;
       }
     }
@@ -358,5 +422,4 @@
   // ── Init ─────────────────────────────────────────────────────────────
 
   checkStatus();
-  loadConfigs();
 })();

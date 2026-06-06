@@ -181,18 +181,26 @@
     // Skip if already set to the right value
     if (element.value === String(value)) return true;
 
-    // Open dropdown via mousedown (MUI listens on mousedown, not click)
+    // Open dropdown — try mousedown first, then focus+click as fallback
+    combobox.focus();
     combobox.dispatchEvent(
       new MouseEvent("mousedown", { bubbles: true, cancelable: true })
     );
 
-    // Wait for listbox to appear in the DOM (MUI portals it to body)
     let listbox = null;
-    for (let i = 0; i < 30; i++) {
+    for (let i = 0; i < 15; i++) {
       await sleep(50);
-      // MUI renders the listbox as a direct child of body or a portal
       listbox = document.querySelector('[role="listbox"]');
       if (listbox) break;
+    }
+
+    if (!listbox) {
+      combobox.click();
+      for (let i = 0; i < 15; i++) {
+        await sleep(50);
+        listbox = document.querySelector('[role="listbox"]');
+        if (listbox) break;
+      }
     }
 
     if (!listbox) {
@@ -203,16 +211,35 @@
     // Find and click the matching option
     const options = listbox.querySelectorAll('[role="option"], li');
     let matched = false;
+    const strValue = String(value);
+    const lowerValue = strValue.toLowerCase();
 
+    // Pass 1: exact match (after whitespace normalisation)
     for (const opt of options) {
-      if (opt.textContent.trim() === String(value)) {
+      const optText = opt.textContent.replace(/\s+/g, " ").trim();
+      if (optText === strValue) {
         opt.click();
         matched = true;
         break;
       }
     }
 
+    // Pass 2: case-insensitive match or option starts with the saved value
+    // Handles OpenSCAD key:label mismatches (e.g. saved "cullenect" → "Cullenect click labels V2")
     if (!matched) {
+      for (const opt of options) {
+        const optText = opt.textContent.replace(/\s+/g, " ").trim().toLowerCase();
+        if (optText === lowerValue || optText.startsWith(lowerValue)) {
+          opt.click();
+          matched = true;
+          break;
+        }
+      }
+    }
+
+    if (!matched) {
+      console.warn(`[MakerLab Saver] Option "${strValue}" not found. Available:`,
+        [...options].map(o => JSON.stringify(o.textContent)));
       // Close dropdown with Escape
       document.body.dispatchEvent(
         new KeyboardEvent("keydown", {

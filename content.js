@@ -1,4 +1,4 @@
-// MakerLab Config Saver — Content Script (isolated world)
+// MakerLab Config Saver - Content Script (isolated world)
 
 (function () {
   "use strict";
@@ -18,16 +18,18 @@
 
   let lastCapturedPayload = null;
   let pendingRestoreCallback = null;
-  let pendingDesignInfoCallback = null;
+  let pendingDesignInfoCallbacks = new Map();
+  let designInfoSeq = 0;
 
   function queryDesignInfo() {
     return new Promise((resolve) => {
-      pendingDesignInfoCallback = resolve;
-      window.postMessage({ channel: CHANNEL, type: "queryDesignInfo" }, "*");
+      const id = ++designInfoSeq;
+      pendingDesignInfoCallbacks.set(id, resolve);
+      window.postMessage({ channel: CHANNEL, type: "queryDesignInfo", callbackId: id }, "*");
       setTimeout(() => {
-        if (pendingDesignInfoCallback) {
-          pendingDesignInfoCallback({ designName: "", customizableName: "" });
-          pendingDesignInfoCallback = null;
+        if (pendingDesignInfoCallbacks.has(id)) {
+          pendingDesignInfoCallbacks.get(id)({ designName: "", customizableName: "" });
+          pendingDesignInfoCallbacks.delete(id);
         }
       }, 1000);
     });
@@ -42,7 +44,7 @@
     if (event.data.type === "captured") {
       lastCapturedPayload = event.data.payload;
       console.log(
-        "[MakerLab Saver] Captured — design:",
+        "[MakerLab Saver] Captured - design:",
         lastCapturedPayload.designId
       );
     }
@@ -52,12 +54,16 @@
       pendingRestoreCallback = null;
     }
 
-    if (event.data.type === "designInfoResult" && pendingDesignInfoCallback) {
-      pendingDesignInfoCallback({
-        designName: event.data.designName,
-        customizableName: event.data.customizableName,
-      });
-      pendingDesignInfoCallback = null;
+    if (event.data.type === "designInfoResult") {
+      const id = event.data.callbackId;
+      const cb = id && pendingDesignInfoCallbacks.get(id);
+      if (cb) {
+        cb({
+          designName: event.data.designName,
+          customizableName: event.data.customizableName,
+        });
+        pendingDesignInfoCallbacks.delete(id);
+      }
     }
   });
 
@@ -115,7 +121,7 @@
       const arrayMatch = rawValue.match(/^\[([^\[\]]*)\]$/);
       if (arrayMatch) {
         const elements = arrayMatch[1].split(",").map((s) => s.trim());
-        const allNumbers = elements.every((e) => /^-?\d+(\.\d+)?$/.test(e));
+        const allNumbers = elements.every((e) => /^-?\d*\.?\d+$/.test(e));
         if (!allNumbers) continue;
         const value = elements.map((e) => parseFloat(e));
         const type = "array";
@@ -137,7 +143,7 @@
       if (rawValue.includes("[")) continue;
 
       const hasOperator = /[+\-*/]/.test(rawValue);
-      const isSimpleNegative = /^-\d+(\.\d+)?$/.test(rawValue);
+      const isSimpleNegative = /^-\d*\.?\d+$/.test(rawValue);
       if (hasOperator && !isSimpleNegative) continue;
 
       let value, type, options;
@@ -148,7 +154,7 @@
       } else if (rawValue === "true" || rawValue === "false") {
         type = "boolean";
         value = rawValue === "true";
-      } else if (/^-?\d+(\.\d+)?$/.test(rawValue)) {
+      } else if (/^-?\d*\.?\d+$/.test(rawValue)) {
         type = "number";
         value = parseFloat(rawValue);
       } else {

@@ -1,4 +1,4 @@
-// MakerLab Config Saver — Page-level script (MAIN WORLD)
+// MakerLab Config Saver - Page-level script (MAIN WORLD)
 
 (function () {
   "use strict";
@@ -47,7 +47,9 @@
         );
         console.log(`[MakerLab Saver] Captured via ${source}:`, parsed.designId);
       }
-    } catch (e) {}
+    } catch (e) {
+      console.debug("[MakerLab Saver] Capture failed:", e.message);
+    }
   }
 
   const originalFetch = window.fetch;
@@ -194,7 +196,7 @@
     // Skip if already set to the right value
     if (element.value === String(value)) return true;
 
-    // Open dropdown — try mousedown first, then focus+click as fallback
+    // Open dropdown - try mousedown first, then focus+click as fallback
     combobox.focus();
     combobox.dispatchEvent(
       new MouseEvent("mousedown", { bubbles: true, cancelable: true })
@@ -237,16 +239,32 @@
       }
     }
 
-    // Pass 2: case-insensitive match or option starts with the saved value
-    // Handles OpenSCAD key:label mismatches (e.g. saved "cullenect" → "Cullenect click labels V2")
+    // Pass 2: case-insensitive exact match
     if (!matched) {
       for (const opt of options) {
         const optText = opt.textContent.replace(/\s+/g, " ").trim().toLowerCase();
-        if (optText === lowerValue || optText.startsWith(lowerValue)) {
+        if (optText === lowerValue) {
           opt.click();
           matched = true;
           break;
         }
+      }
+    }
+
+    // Pass 3: startsWith fallback - pick the shortest match to avoid prefix collisions
+    if (!matched) {
+      let bestOpt = null;
+      let bestLen = Infinity;
+      for (const opt of options) {
+        const optText = opt.textContent.replace(/\s+/g, " ").trim();
+        if (optText.toLowerCase().startsWith(lowerValue) && optText.length < bestLen) {
+          bestOpt = opt;
+          bestLen = optText.length;
+        }
+      }
+      if (bestOpt) {
+        bestOpt.click();
+        matched = true;
       }
     }
 
@@ -290,13 +308,12 @@
 
   function setCheckbox(input, value) {
     const target = value === true || value === "true";
-    if (input.checked !== target) {
-      input.click();
-      if (input.checked !== target) {
-        const parent = input.closest("span");
-        if (parent) parent.click();
-      }
-    }
+    if (input.checked === target) return true;
+    input.click();
+    if (input.checked === target) return true;
+    const parent = input.closest("span");
+    if (parent) parent.click();
+    return input.checked === target;
   }
 
   // ── Restore orchestrator ────────────────────────────────────────────
@@ -367,7 +384,7 @@
     // Wait for React to settle after all text inputs
     await sleep(300);
 
-    // Pass 2: dropdowns — strictly sequential with generous delays
+    // Pass 2: dropdowns - strictly sequential with generous delays
     for (const { param, field } of selectParams) {
       try {
         const ok = await setMUISelect(field, param.value);
@@ -392,9 +409,14 @@
     // Pass 3: checkboxes
     for (const { param, field } of checkboxParams) {
       try {
-        setCheckbox(field.element, param.value);
-        results.matched++;
-        results.details.push({ name: param.name, status: "ok" });
+        const ok = setCheckbox(field.element, param.value);
+        if (ok) {
+          results.matched++;
+          results.details.push({ name: param.name, status: "ok" });
+        } else {
+          results.failed++;
+          results.details.push({ name: param.name, status: "checkbox_fail" });
+        }
       } catch (e) {
         results.failed++;
         results.details.push({ name: param.name, status: "error", error: e.message });
@@ -430,6 +452,7 @@
         {
           channel: CHANNEL,
           type: "designInfoResult",
+          callbackId: event.data.callbackId,
           designName: getDesignName(),
           customizableName: getCustomizableName(),
         },

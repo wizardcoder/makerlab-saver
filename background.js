@@ -1,4 +1,4 @@
-// MakerLab Config Saver — Background Service Worker
+// MakerLab Config Saver - Background Service Worker
 
 chrome.runtime.onInstalled.addListener(() => {
   console.log("[MakerLab Saver] Extension installed.");

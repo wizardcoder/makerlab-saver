@@ -1,4 +1,4 @@
-// MakerLab Config Saver — Popup Script
+// MakerLab Config Saver - Popup Script
 
 (function () {
   "use strict";
@@ -100,28 +100,35 @@
     const urlIsMakerLab = isMakerLabUrl(tab?.url);
 
     const res = await sendToContent({ action: "getLastCapture" });
-    if (res.ok) {
+    if (res.ok && urlIsMakerLab) {
       onMakerLab = true;
       hasCapture = true;
       currentDesignId = res.designId;
       currentCustomizableName = res.customizableName || null;
       statusDot.classList.add("captured");
-      statusText.textContent = `Captured: ${res.designName || "Design " + (res.designId || "?")} — ${res.paramCount} params`;
+      statusText.textContent = `Captured: ${res.designName || "Design " + (res.designId || "?")} - ${res.paramCount} params`;
       saveBtn.disabled = false;
       saveSection.style.display = "";
+    } else if (res.ok) {
+      hasCapture = true;
+      onMakerLab = false;
+      statusDot.classList.remove("captured");
+      statusText.textContent = "Not on a MakerLab page. Viewing all saved configs.";
+      saveSection.style.display = "none";
     } else if (urlIsMakerLab) {
       onMakerLab = true;
       try {
         const u = new URL(tab.url);
         const urlDesignId = u.searchParams.get("designId");
-        if (urlDesignId) currentDesignId = parseInt(urlDesignId, 10) || urlDesignId;
+        if (urlDesignId) {
+          const parsed = parseInt(urlDesignId, 10);
+          currentDesignId = isNaN(parsed) ? urlDesignId : parsed;
+        }
         const urlModel = u.searchParams.get("modelName");
         if (urlModel) currentCustomizableName = urlModel;
       } catch {}
       statusDot.classList.remove("captured");
-      statusText.textContent = res.error && !res.error.includes("Not on a MakerWorld")
-        ? res.error
-        : "On MakerLab page — change a value and click Generate to capture.";
+      statusText.textContent = "On MakerLab page - change a value and click Generate to capture.";
       saveBtn.disabled = true;
       saveSection.style.display = "";
     } else if (res.error && !res.error.includes("Not on a MakerWorld")) {
@@ -233,15 +240,21 @@
   // ── Save ─────────────────────────────────────────────────────────────
 
   saveBtn.addEventListener("click", async () => {
+    if (saveBtn.disabled) return;
     const name = configName.value.trim();
     if (!name) { showToast("Enter a name first.", "error"); return; }
-    const res = await sendToContent({ action: "saveConfig", name });
-    if (res.ok) {
-      showToast("Saved!");
-      configName.value = "";
-      loadConfigs();
-    } else {
-      showToast(res.error, "error");
+    saveBtn.disabled = true;
+    try {
+      const res = await sendToContent({ action: "saveConfig", name });
+      if (res.ok) {
+        showToast("Saved!");
+        configName.value = "";
+        loadConfigs();
+      } else {
+        showToast(res.error, "error");
+      }
+    } finally {
+      saveBtn.disabled = false;
     }
   });
 
@@ -265,7 +278,7 @@
       case "restore": {
         btn.textContent = "Restoring…";
         btn.disabled = true;
-        showToast("Restoring config — dropdowns may flash…", "info");
+        showToast("Restoring config - dropdowns may flash…", "info");
 
         const res = await sendToContent({ action: "restoreConfig", index });
         btn.textContent = "⬆ Load";
@@ -323,7 +336,7 @@
         resultSection.style.display = "block";
 
         if (!res.diffs.length) {
-          resultContent.innerHTML = '<div class="empty-state">No differences — identical.</div>';
+          resultContent.innerHTML = '<div class="empty-state">No differences - identical.</div>';
           return;
         }
 
@@ -435,7 +448,7 @@
           (c) => !existing.has(`${c.name}|${c.designId}|${c.savedAt}`)
         );
         if (!fresh.length) {
-          showToast("All configs already exist — nothing imported.", "info");
+          showToast("All configs already exist - nothing imported.", "info");
           return;
         }
         const merged = data.savedConfigs.concat(fresh);

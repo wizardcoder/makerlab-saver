@@ -133,24 +133,37 @@
 
       if (!labelEl) continue;
       const label = labelEl.textContent.trim().toLowerCase();
-      if (!label || fields[label]) continue;
+      if (!label) continue;
 
       if (input.type === "checkbox") {
-        fields[label] = { type: "checkbox", element: input, wrapper: container };
+        if (!fields[label]) {
+          fields[label] = { type: "checkbox", element: input, wrapper: container };
+        }
       } else if (input.getAttribute("role") === "combobox") {
-        // Skip the autocomplete/file-selector combobox (no hidden sibling)
         continue;
       } else {
         const combobox = container.querySelector('[role="combobox"]');
         if (combobox) {
-          fields[label] = {
-            type: "select",
-            element: input,
-            combobox,
-            wrapper: container,
-          };
+          if (!fields[label]) {
+            fields[label] = {
+              type: "select",
+              element: input,
+              combobox,
+              wrapper: container,
+            };
+          }
         } else if (input.offsetParent !== null) {
-          fields[label] = { type: "text", element: input, wrapper: container };
+          if (fields[label] && fields[label].type === "array") {
+            fields[label].elements.push(input);
+          } else if (fields[label] && fields[label].type === "text") {
+            fields[label] = {
+              type: "array",
+              elements: [fields[label].element, input],
+              wrapper: container,
+            };
+          } else if (!fields[label]) {
+            fields[label] = { type: "text", element: input, wrapper: container };
+          }
         }
       }
     }
@@ -301,6 +314,8 @@
     const checkboxParams = [];
     const noField = [];
 
+    const arrayParams = [];
+
     for (const param of params) {
       const label = varNameToLabel(param.name);
       const field = fields[label];
@@ -308,7 +323,8 @@
         noField.push(param);
         continue;
       }
-      if (field.type === "text") textParams.push({ param, field });
+      if (field.type === "array") arrayParams.push({ param, field });
+      else if (field.type === "text") textParams.push({ param, field });
       else if (field.type === "select") selectParams.push({ param, field });
       else if (field.type === "checkbox") checkboxParams.push({ param, field });
     }
@@ -319,7 +335,7 @@
       results.details.push({ name: param.name, status: "no_field" });
     }
 
-    // Pass 1: text inputs with small delays
+    // Pass 1a: text inputs with small delays
     for (const { param, field } of textParams) {
       try {
         setReactInput(field.element, param.value);
@@ -329,8 +345,23 @@
         results.failed++;
         results.details.push({ name: param.name, status: "error", error: e.message });
       }
-      // Small delay to let React process each change
       await sleep(30);
+    }
+
+    // Pass 1b: array/grouped inputs
+    for (const { param, field } of arrayParams) {
+      try {
+        const values = Array.isArray(param.value) ? param.value : [param.value];
+        for (let i = 0; i < Math.min(values.length, field.elements.length); i++) {
+          setReactInput(field.elements[i], values[i]);
+          await sleep(30);
+        }
+        results.matched++;
+        results.details.push({ name: param.name, status: "ok" });
+      } catch (e) {
+        results.failed++;
+        results.details.push({ name: param.name, status: "error", error: e.message });
+      }
     }
 
     // Wait for React to settle after all text inputs
@@ -412,7 +443,11 @@
         label,
         type: f.type,
         value:
-          f.type === "checkbox" ? f.element.checked : f.element.value,
+          f.type === "array"
+            ? f.elements.map((el) => el.value)
+            : f.type === "checkbox"
+              ? f.element.checked
+              : f.element.value,
       }));
       window.postMessage(
         { channel: CHANNEL, type: "scanResult", fields: list },

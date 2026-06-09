@@ -70,7 +70,7 @@
   function parseDOverrides(paramsStr) {
     const overrides = {};
     if (!paramsStr) return overrides;
-    const matches = paramsStr.matchAll(/-D(\w+)=("(?:[^"\\]|\\.)*"|\S+)/g);
+    const matches = paramsStr.matchAll(/-D(\w+)=("(?:[^"\\]|\\.)*"|\[[^\]]*\]|\S+)/g);
     for (const m of matches) {
       overrides[m[1]] = m[2];
     }
@@ -109,7 +109,32 @@
 
       const [, name, rawValue, comment] = varMatch;
 
-      if (rawValue.includes("(") || rawValue.includes("?") || rawValue.includes("[")) continue;
+      if (rawValue.includes("(") || rawValue.includes("?")) continue;
+
+      // Check for simple array/vector: [num, num, ...]
+      const arrayMatch = rawValue.match(/^\[([^\[\]]*)\]$/);
+      if (arrayMatch) {
+        const elements = arrayMatch[1].split(",").map((s) => s.trim());
+        const allNumbers = elements.every((e) => /^-?\d+(\.\d+)?$/.test(e));
+        if (!allNumbers) continue;
+        const value = elements.map((e) => parseFloat(e));
+        const type = "array";
+
+        if (overrides[name] !== undefined) {
+          const ov = overrides[name];
+          const ovArray = ov.match(/^\[([^\[\]]*)\]$/);
+          if (ovArray) {
+            const ovElements = ovArray[1].split(",").map((s) => parseFloat(s.trim()));
+            params.push({ name, value: ovElements, type, options: null, section: currentSection, comment: comment || "", raw: rawValue });
+            continue;
+          }
+        }
+
+        params.push({ name, value, type, options: null, section: currentSection, comment: comment || "", raw: rawValue });
+        continue;
+      }
+
+      if (rawValue.includes("[")) continue;
 
       const hasOperator = /[+\-*/]/.test(rawValue);
       const isSimpleNegative = /^-\d+(\.\d+)?$/.test(rawValue);

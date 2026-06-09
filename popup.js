@@ -78,7 +78,27 @@
 
   // ── Status ──────────────────────────────────────────────────────────
 
+  function getActiveTab() {
+    return new Promise((resolve) => {
+      chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+        resolve(tabs[0] || null);
+      });
+    });
+  }
+
+  function isMakerLabUrl(url) {
+    if (!url) return false;
+    try {
+      const u = new URL(url);
+      return (u.hostname === "makerworld.com" || u.hostname === "www.makerworld.com") &&
+        u.pathname.includes("/makerlab");
+    } catch { return false; }
+  }
+
   async function checkStatus() {
+    const tab = await getActiveTab();
+    const urlIsMakerLab = isMakerLabUrl(tab?.url);
+
     const res = await sendToContent({ action: "getLastCapture" });
     if (res.ok) {
       onMakerLab = true;
@@ -88,6 +108,21 @@
       statusDot.classList.add("captured");
       statusText.textContent = `Captured: ${res.designName || "Design " + (res.designId || "?")} — ${res.paramCount} params`;
       saveBtn.disabled = false;
+      saveSection.style.display = "";
+    } else if (urlIsMakerLab) {
+      onMakerLab = true;
+      try {
+        const u = new URL(tab.url);
+        const urlDesignId = u.searchParams.get("designId");
+        if (urlDesignId) currentDesignId = parseInt(urlDesignId, 10) || urlDesignId;
+        const urlModel = u.searchParams.get("modelName");
+        if (urlModel) currentCustomizableName = urlModel;
+      } catch {}
+      statusDot.classList.remove("captured");
+      statusText.textContent = res.error && !res.error.includes("Not on a MakerWorld")
+        ? res.error
+        : "On MakerLab page — change a value and click Generate to capture.";
+      saveBtn.disabled = true;
       saveSection.style.display = "";
     } else if (res.error && !res.error.includes("Not on a MakerWorld")) {
       onMakerLab = true;
@@ -202,7 +237,7 @@
     if (!name) { showToast("Enter a name first.", "error"); return; }
     const res = await sendToContent({ action: "saveConfig", name });
     if (res.ok) {
-      showToast(`Saved! (${res.total} total)`);
+      showToast("Saved!");
       configName.value = "";
       loadConfigs();
     } else {

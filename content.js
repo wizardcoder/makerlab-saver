@@ -5,14 +5,7 @@
 
   const CHANNEL = "makerlab-saver";
 
-  // ── Inject page-level script ────────────────────────────────────────
-
-  const script = document.createElement("script");
-  script.src = chrome.runtime.getURL("inject.js");
-  script.onload = function () {
-    this.remove();
-  };
-  (document.head || document.documentElement).appendChild(script);
+  // inject.js is loaded via manifest.json with "world": "MAIN"
 
   // ── State ────────────────────────────────────────────────────────────
 
@@ -194,6 +187,13 @@
     return params;
   }
 
+  function getParamsFromPayload(payload) {
+    if (payload.parsedParams && payload.parsedParams.length) {
+      return payload.parsedParams;
+    }
+    return parseOpenSCADParams(payload.code, payload.params);
+  }
+
   // ── Popup message handling ──────────────────────────────────────────
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -206,7 +206,7 @@
         queryDesignInfo().then((info) => {
           if (info.designName) lastCapturedPayload.designName = info.designName;
           if (info.customizableName) lastCapturedPayload.customizableName = info.customizableName;
-          const params = parseOpenSCADParams(lastCapturedPayload.code, lastCapturedPayload.params);
+          const params = getParamsFromPayload(lastCapturedPayload);
           sendResponse({
             ok: true,
             designId: lastCapturedPayload.designId,
@@ -228,7 +228,7 @@
         queryDesignInfo().then((info) => {
           if (info.designName) lastCapturedPayload.designName = info.designName;
           if (info.customizableName) lastCapturedPayload.customizableName = info.customizableName;
-          const params = parseOpenSCADParams(lastCapturedPayload.code, lastCapturedPayload.params);
+          const params = getParamsFromPayload(lastCapturedPayload);
           const configToSave = {
             name: msg.name || `Config ${new Date().toLocaleString()}`,
             designId: lastCapturedPayload.designId,
@@ -369,7 +369,7 @@
             sendResponse({ ok: false, error: "Need both a saved config and a current capture to diff." });
             return;
           }
-          const currentParams = parseOpenSCADParams(lastCapturedPayload.code, lastCapturedPayload.params);
+          const currentParams = getParamsFromPayload(lastCapturedPayload);
           const currentMap = {};
           for (const p of currentParams) currentMap[p.name] = p;
 

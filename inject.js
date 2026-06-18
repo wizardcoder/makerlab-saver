@@ -23,49 +23,107 @@
 
   // ── Capture logic ───────────────────────────────────────────────────
 
+  function sendCaptured(payload, source) {
+    window.postMessage({ channel: CHANNEL, type: "captured", payload }, "*");
+    console.log(`[MakerLab Saver] Captured via ${source}:`, payload.designId);
+  }
+
   function tryCapturePayload(bodyText, source) {
     try {
       const parsed = JSON.parse(bodyText);
+
+      const base = {
+        type: parsed.type || "obj",
+        color: parsed.color || "",
+        designId: parsed.designId || null,
+        designName: getDesignName(),
+        customizableName: getCustomizableName(),
+        capturedAt: new Date().toISOString(),
+        rawPayload: bodyText,
+      };
+
+      // New format: { designId, uniqueKey, parameters: JSON string }
+      if (parsed.designId && parsed.parameters) {
+        let paramObj;
+        if (typeof parsed.parameters === "string") {
+          try { paramObj = JSON.parse(parsed.parameters); } catch { paramObj = {}; }
+        } else {
+          paramObj = parsed.parameters;
+        }
+
+        const params = Object.entries(paramObj).map(([name, value]) => ({
+          name,
+          value,
+          type: typeof value === "boolean" ? "boolean" : typeof value === "number" ? "number" : "string",
+          options: null,
+          section: "",
+          comment: "",
+          raw: String(value),
+        }));
+
+        sendCaptured({
+          ...base,
+          code: "",
+          params: "",
+          parsedParams: params,
+          uniqueKey: parsed.uniqueKey || "",
+        }, source);
+        return;
+      }
+
+      // Legacy format: { code (base64), type, params (base64 -D overrides) }
       if (parsed.code && parsed.type) {
-        window.postMessage(
-          {
-            channel: CHANNEL,
-            type: "captured",
-            payload: {
-              code: atob(parsed.code),
-              params: parsed.params ? atob(parsed.params) : "",
-              type: parsed.type,
-              color: parsed.color || "",
-              designId: parsed.designId || null,
-              designName: getDesignName(),
-              customizableName: getCustomizableName(),
-              capturedAt: new Date().toISOString(),
-              rawPayload: bodyText,
-            },
-          },
-          "*"
-        );
-        console.log(`[MakerLab Saver] Captured via ${source}:`, parsed.designId);
+        sendCaptured({
+          ...base,
+          code: atob(parsed.code),
+          params: parsed.params ? atob(parsed.params) : "",
+        }, source);
       }
     } catch (e) {
       console.debug("[MakerLab Saver] Capture failed:", e.message);
     }
   }
 
-  const originalFetch = window.fetch;
-  window.fetch = function (...args) {
-    const [, init] = args;
-    if (init?.method?.toUpperCase() === "POST" && init?.body) {
-      if (typeof init.body === "string")
-        tryCapturePayload(init.body, "fetch");
-      else if (init.body instanceof Blob)
-        init.body.text().then((t) => tryCapturePayload(t, "fetch"));
-      else if (init.body instanceof ArrayBuffer)
-        tryCapturePayload(new TextDecoder().decode(init.body), "fetch");
-    }
-    return originalFetch.apply(this, args);
-  };
+  // Intercept fetch — use Object.defineProperty so the override sticks
+  // even if page code tries to cache or reassign window.fetch.
+  const originalFetch = window.fetch.bind(window);
+  function patchedFetch(...args) {
+    const [resource, init] = args;
 
+    let method, body;
+    if (resource instanceof Request) {
+      method = resource.method;
+      body = resource.body || init?.body;
+    } else {
+      method = init?.method;
+      body = init?.body;
+    }
+
+    if (method?.toUpperCase() === "POST") {
+      if (typeof body === "string") {
+        tryCapturePayload(body, "fetch");
+      } else if (body instanceof Blob) {
+        body.text().then((t) => tryCapturePayload(t, "fetch"));
+      } else if (body instanceof ArrayBuffer) {
+        tryCapturePayload(new TextDecoder().decode(body), "fetch");
+      } else if (resource instanceof Request) {
+        try {
+          const cloned = resource.clone();
+          cloned.text().then((t) => tryCapturePayload(t, "fetch-stream"));
+        } catch (e) {
+          console.debug("[MakerLab Saver] Could not read stream body:", e.message);
+        }
+      }
+    }
+    return originalFetch(...args);
+  }
+  Object.defineProperty(window, "fetch", {
+    get() { return patchedFetch; },
+    set() { /* block page from overwriting our hook */ },
+    configurable: true,
+  });
+
+  // Intercept XHR
   const origXHROpen = XMLHttpRequest.prototype.open;
   const origXHRSend = XMLHttpRequest.prototype.send;
   XMLHttpRequest.prototype.open = function (m, u, ...r) {

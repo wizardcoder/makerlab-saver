@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "MakerLab Config Saver",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "Save and restore MakerLab customisation options on MakerWorld",
   "permissions": [
     "storage"
@@ -18,12 +18,15 @@
       ],
       "js": ["content.js"],
       "run_at": "document_start"
-    }
-  ],
-  "web_accessible_resources": [
+    },
     {
-      "resources": ["inject.js"],
-      "matches": ["https://makerworld.com/*", "https://www.makerworld.com/*"]
+      "matches": [
+        "https://makerworld.com/*",
+        "https://www.makerworld.com/*"
+      ],
+      "js": ["inject.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
     }
   ],
   "background": {

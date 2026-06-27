@@ -67,6 +67,6 @@ background.js        — Minimal service worker
 - **Capture requires a generate action** — the extension only sees the config when MakerLab sends it to the server. Simply changing options without generating won't trigger a capture.
 - **Computed parameters are skipped** — only simple variable declarations (numbers, strings, booleans) are parsed. Derived values that use expressions are ignored since they're computed from the simple params.
 
-## Licence
+## License
 
-No licence specified.
+This project is licensed under the [GPL-3.0 License](LICENSE).

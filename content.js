@@ -11,6 +11,7 @@
 
   let lastCapturedPayload = null;
   let pendingRestoreCallback = null;
+  let pendingScanCallback = null;
   let pendingDesignInfoCallbacks = new Map();
   let designInfoSeq = 0;
 
@@ -45,6 +46,11 @@
     if (event.data.type === "restoreResult" && pendingRestoreCallback) {
       pendingRestoreCallback(event.data.results);
       pendingRestoreCallback = null;
+    }
+
+    if (event.data.type === "scanResult" && pendingScanCallback) {
+      pendingScanCallback(event.data.fields);
+      pendingScanCallback = null;
     }
 
     if (event.data.type === "designInfoResult") {
@@ -194,6 +200,28 @@
     return parseOpenSCADParams(payload.code, payload.params);
   }
 
+  // ── Helpers ─────────────────────────────────────────────────────────
+
+  function scanDOMFields() {
+    return new Promise((resolve) => {
+      pendingScanCallback = resolve;
+      window.postMessage({ channel: CHANNEL, type: "scanFields" }, "*");
+      setTimeout(() => {
+        if (pendingScanCallback) {
+          pendingScanCallback = null;
+          resolve([]);
+        }
+      }, 2000);
+    });
+  }
+
+  async function refreshPayloadInfo() {
+    const info = await queryDesignInfo();
+    if (info.designName) lastCapturedPayload.designName = info.designName;
+    if (info.customizableName) lastCapturedPayload.customizableName = info.customizableName;
+    return getParamsFromPayload(lastCapturedPayload);
+  }
+
   // ── Popup message handling ──────────────────────────────────────────
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -203,10 +231,7 @@
           sendResponse({ ok: false, error: "No config captured yet. Change an option in MakerLab and click Generate to capture." });
           return;
         }
-        queryDesignInfo().then((info) => {
-          if (info.designName) lastCapturedPayload.designName = info.designName;
-          if (info.customizableName) lastCapturedPayload.customizableName = info.customizableName;
-          const params = getParamsFromPayload(lastCapturedPayload);
+        refreshPayloadInfo().then((params) => {
           sendResponse({
             ok: true,
             designId: lastCapturedPayload.designId,
@@ -220,15 +245,42 @@
         return true;
       }
 
+      case "checkStale": {
+        if (!lastCapturedPayload) {
+          sendResponse({ ok: true, stale: false });
+          return;
+        }
+        refreshPayloadInfo().then(async (params) => {
+          const domFields = await scanDOMFields();
+          if (!domFields.length) {
+            sendResponse({ ok: true, stale: false });
+            return;
+          }
+          const domMap = {};
+          for (const f of domFields) domMap[f.label] = f;
+
+          const changed = [];
+          for (const p of params) {
+            const label = p.name.replace(/_/g, " ").toLowerCase();
+            const dom = domMap[label];
+            if (!dom) continue;
+            const domVal = String(Array.isArray(dom.value) ? dom.value.join(",") : dom.value);
+            const capVal = String(Array.isArray(p.value) ? p.value.join(",") : p.value);
+            if (domVal !== capVal) {
+              changed.push({ name: p.name, captured: capVal, current: domVal });
+            }
+          }
+          sendResponse({ ok: true, stale: changed.length > 0, changed });
+        });
+        return true;
+      }
+
       case "saveConfig": {
         if (!lastCapturedPayload) {
           sendResponse({ ok: false, error: "Nothing captured to save." });
           return;
         }
-        queryDesignInfo().then((info) => {
-          if (info.designName) lastCapturedPayload.designName = info.designName;
-          if (info.customizableName) lastCapturedPayload.customizableName = info.customizableName;
-          const params = getParamsFromPayload(lastCapturedPayload);
+        refreshPayloadInfo().then((params) => {
           const configToSave = {
             name: msg.name || `Config ${new Date().toLocaleString()}`,
             designId: lastCapturedPayload.designId,
@@ -253,82 +305,6 @@
         return true;
       }
 
-      case "listConfigs": {
-        chrome.storage.local.get({ savedConfigs: [] }, (data) => {
-          sendResponse({
-            ok: true,
-            configs: data.savedConfigs.map((c, i) => ({
-              index: i,
-              name: c.name,
-              designId: c.designId,
-              designName: c.designName || "",
-              customizableName: c.customizableName || "",
-              savedAt: c.savedAt,
-              paramCount: c.params.length,
-            })),
-          });
-        });
-        return true;
-      }
-
-      case "loadConfig": {
-        chrome.storage.local.get({ savedConfigs: [] }, (data) => {
-          const config = data.savedConfigs[msg.index];
-          if (!config) {
-            sendResponse({ ok: false, error: "Config not found." });
-            return;
-          }
-          sendResponse({ ok: true, config });
-        });
-        return true;
-      }
-
-      case "deleteConfig": {
-        chrome.storage.local.get({ savedConfigs: [] }, (data) => {
-          const configs = data.savedConfigs;
-          if (msg.index >= 0 && msg.index < configs.length) {
-            configs.splice(msg.index, 1);
-            chrome.storage.local.set({ savedConfigs: configs }, () => {
-              sendResponse({ ok: true });
-            });
-          } else {
-            sendResponse({ ok: false, error: "Invalid index." });
-          }
-        });
-        return true;
-      }
-
-      case "importConfig": {
-        const config = msg.config;
-        if (!config || !config.params) {
-          sendResponse({ ok: false, error: "Invalid config data." });
-          return;
-        }
-        chrome.storage.local.get({ savedConfigs: [] }, (data) => {
-          data.savedConfigs.push(config);
-          chrome.storage.local.set({ savedConfigs: data.savedConfigs }, () => {
-            sendResponse({ ok: true, total: data.savedConfigs.length });
-          });
-        });
-        return true;
-      }
-
-      case "exportConfig": {
-        chrome.storage.local.get({ savedConfigs: [] }, (data) => {
-          const config = data.savedConfigs[msg.index];
-          if (!config) {
-            sendResponse({ ok: false, error: "Config not found." });
-            return;
-          }
-          sendResponse({
-            ok: true,
-            json: JSON.stringify(config, null, 2),
-            filename: `makerlab-${config.name.replace(/\s+/g, "-").toLowerCase()}.json`,
-          });
-        });
-        return true;
-      }
-
       case "restoreConfig": {
         chrome.storage.local.get({ savedConfigs: [] }, (data) => {
           const config = data.savedConfigs[msg.index];
@@ -337,21 +313,15 @@
             return;
           }
 
-          // Send params to page context for DOM manipulation
           pendingRestoreCallback = (results) => {
             sendResponse({ ok: true, results });
           };
 
           window.postMessage(
-            {
-              channel: CHANNEL,
-              type: "restore",
-              params: config.params,
-            },
+            { channel: CHANNEL, type: "restore", params: config.params },
             "*"
           );
 
-          // Timeout in case page script doesn't respond
           setTimeout(() => {
             if (pendingRestoreCallback) {
               pendingRestoreCallback = null;
@@ -363,10 +333,14 @@
       }
 
       case "getDiff": {
+        if (!lastCapturedPayload) {
+          sendResponse({ ok: false, error: "Need both a saved config and a current capture to diff." });
+          return;
+        }
         chrome.storage.local.get({ savedConfigs: [] }, (data) => {
           const config = data.savedConfigs[msg.index];
-          if (!config || !lastCapturedPayload) {
-            sendResponse({ ok: false, error: "Need both a saved config and a current capture to diff." });
+          if (!config) {
+            sendResponse({ ok: false, error: "Config not found." });
             return;
           }
           const currentParams = getParamsFromPayload(lastCapturedPayload);

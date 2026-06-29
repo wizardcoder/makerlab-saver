@@ -281,87 +281,38 @@
       return false;
     }
 
-    // Find and click the matching option
     const options = listbox.querySelectorAll('[role="option"], li');
-    let matched = false;
     const strValue = String(value);
     const lowerValue = strValue.toLowerCase();
 
-    // Pass 1: exact match (after whitespace normalisation)
+    let exact = null, caseMatch = null, prefixMatch = null, prefixLen = Infinity;
     for (const opt of options) {
-      const optText = opt.textContent.replace(/\s+/g, " ").trim();
-      if (optText === strValue) {
-        opt.click();
-        matched = true;
-        break;
+      const raw = opt.textContent.replace(/\s+/g, " ").trim();
+      if (raw === strValue) { exact = opt; break; }
+      const lower = raw.toLowerCase();
+      if (!caseMatch && lower === lowerValue) caseMatch = opt;
+      if (lower.startsWith(lowerValue) && raw.length < prefixLen) {
+        prefixMatch = opt;
+        prefixLen = raw.length;
       }
     }
 
-    // Pass 2: case-insensitive exact match
-    if (!matched) {
-      for (const opt of options) {
-        const optText = opt.textContent.replace(/\s+/g, " ").trim().toLowerCase();
-        if (optText === lowerValue) {
-          opt.click();
-          matched = true;
-          break;
-        }
-      }
-    }
-
-    // Pass 3: startsWith fallback - pick the shortest match to avoid prefix collisions
-    if (!matched) {
-      let bestOpt = null;
-      let bestLen = Infinity;
-      for (const opt of options) {
-        const optText = opt.textContent.replace(/\s+/g, " ").trim();
-        if (optText.toLowerCase().startsWith(lowerValue) && optText.length < bestLen) {
-          bestOpt = opt;
-          bestLen = optText.length;
-        }
-      }
-      if (bestOpt) {
-        bestOpt.click();
-        matched = true;
-      }
-    }
-
-    if (!matched) {
-      console.warn(`[MakerLab Saver] Option "${strValue}" not found. Available:`,
-        [...options].map(o => JSON.stringify(o.textContent)));
-      // Close dropdown with Escape
-      document.body.dispatchEvent(
-        new KeyboardEvent("keydown", {
-          key: "Escape",
-          keyCode: 27,
-          bubbles: true,
-        })
+    const match = exact || caseMatch || prefixMatch;
+    if (match) {
+      match.click();
+    } else {
+      console.warn(`[MakerLab Saver] Option "${strValue}" not found`);
+      document.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "Escape", bubbles: true })
       );
-      // Also try pressing Escape on the listbox parent
-      await sleep(50);
-      const stillOpen = document.querySelector('[role="listbox"]');
-      if (stillOpen) {
-        stillOpen.dispatchEvent(
-          new KeyboardEvent("keydown", {
-            key: "Escape",
-            keyCode: 27,
-            bubbles: true,
-          })
-        );
-      }
-      console.warn(`[MakerLab Saver] Option "${value}" not found`);
     }
 
-    // Wait for dropdown to fully close and React to settle
-    await sleep(200);
-
-    // Verify it's actually closed before continuing
     for (let i = 0; i < 10; i++) {
       if (!document.querySelector('[role="listbox"]')) break;
       await sleep(100);
     }
 
-    return matched;
+    return !!match;
   }
 
   function setCheckbox(input, value) {

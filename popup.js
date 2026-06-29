@@ -239,20 +239,29 @@
 
   // ── Save ─────────────────────────────────────────────────────────────
 
+  async function doSave(name) {
+    const res = await sendToContent({ action: "saveConfig", name });
+    if (res.ok) {
+      showToast("Saved!");
+      configName.value = "";
+      loadConfigs();
+    } else {
+      showToast(res.error, "error");
+    }
+  }
+
   saveBtn.addEventListener("click", async () => {
     if (saveBtn.disabled) return;
     const name = configName.value.trim();
     if (!name) { showToast("Enter a name first.", "error"); return; }
     saveBtn.disabled = true;
     try {
-      const res = await sendToContent({ action: "saveConfig", name });
-      if (res.ok) {
-        showToast("Saved!");
-        configName.value = "";
-        loadConfigs();
-      } else {
-        showToast(res.error, "error");
+      const stale = await sendToContent({ action: "checkStale" });
+      if (stale.ok && stale.stale) {
+        const names = stale.changed.map((c) => c.name).join(", ");
+        if (!confirm(`Values have changed since last Generate:\n${names}\n\nSave the generated values anyway?`)) return;
       }
+      await doSave(name);
     } finally {
       saveBtn.disabled = false;
     }

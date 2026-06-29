@@ -371,7 +371,7 @@
         const config = allConfigs[index];
         if (!config) { showToast("Config not found.", "error"); return; }
         const filename = `makerlab-${(config.name || "config").replace(/[^a-z0-9]/gi, "_")}.json`;
-        downloadJson(JSON.stringify(config, null, 2), filename);
+        downloadJson(JSON.stringify(slimConfig(config), null, 2), filename);
         showToast("Exported!");
         break;
       }
@@ -409,10 +409,22 @@
   const importAllBtn = $("#importAllBtn");
   const importAllFile = $("#importAllFile");
 
+  function slimConfig(c) {
+    return {
+      name: c.name,
+      designId: c.designId,
+      designName: c.designName || "",
+      customizableName: c.customizableName || "",
+      params: c.params,
+      savedAt: c.savedAt,
+    };
+  }
+
   exportAllBtn.addEventListener("click", () => {
     chrome.storage.local.get({ savedConfigs: [] }, (data) => {
       if (!data.savedConfigs.length) { showToast("No configs to export.", "error"); return; }
-      downloadJson(JSON.stringify(data.savedConfigs, null, 2), `makerlab-all-configs-${new Date().toISOString().slice(0, 10)}.json`);
+      const slim = data.savedConfigs.map(slimConfig);
+      downloadJson(JSON.stringify(slim, null, 2), `makerlab-all-configs-${new Date().toISOString().slice(0, 10)}.json`);
       showToast(`Exported ${data.savedConfigs.length} configs.`);
     });
   });

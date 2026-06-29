@@ -4,7 +4,7 @@ A Chrome/Edge Manifest V3 browser extension that saves and restores MakerLab cus
 
 ## How It Works
 
-MakerLab sends OpenSCAD source code and parameter overrides as a base64-encoded JSON payload when you generate a model. This extension intercepts those requests, parses the configurable parameters from the source and `-D` overrides, and lets you save, restore, compare, and export them.
+MakerLab sends model parameters to the server when you generate a model. For OpenSCAD models, this is base64-encoded source code with `-D` parameter overrides. For Fusion 360 parametric models, it's a JSON object of parameter key/value pairs. This extension intercepts those requests, parses the configurable parameters, and lets you save, restore, compare, and export them.
 
 ## Installation
 
@@ -41,8 +41,8 @@ For Firefox, load it as a temporary add-on via `about:debugging` → "This Firef
 3. See which parameters differ between saved and current
 
 ### Import / Export
-- **Export** — downloads the full config as a JSON file
-- **Import** — loads a previously exported JSON config file
+- **Export** — downloads a slim config JSON (name, params, design info)
+- **Import** — loads a previously exported JSON config file (supports both old full-size and new slim formats)
 - **Copy Payload** — copies the raw API payload to clipboard (useful for replaying requests)
 
 ## Architecture
@@ -54,18 +54,16 @@ inject.js            — Runs in PAGE context (main world)
                        • Discovers DOM fields and restores values into them
                        • Communicates with content.js via window.postMessage
 content.js           — Runs in CONTENT SCRIPT isolated world
-                       • Injects inject.js into the page at document_start
                        • Bridges between inject.js (postMessage) and popup.js (chrome.runtime)
                        • Parses OpenSCAD source + -D overrides into parameter objects
                        • Manages chrome.storage.local for saved configs
 popup.html / popup.js — Extension popup UI (dark theme)
-background.js        — Minimal service worker
 ```
 
 ## Limitations
 
-- **Capture requires a generate action** — the extension only sees the config when MakerLab sends it to the server. Simply changing options without generating won't trigger a capture.
-- **Computed parameters are skipped** — only simple variable declarations (numbers, strings, booleans) are parsed. Derived values that use expressions are ignored since they're computed from the simple params.
+- **Capture requires a generate action** — the extension only sees the config when MakerLab sends it to the server. Simply changing options without generating won't trigger a capture. A warning is shown if you try to save after changing values without re-generating.
+- **Computed parameters are skipped** (OpenSCAD only) — only simple variable declarations (numbers, strings, booleans) are parsed. Derived values that use expressions are ignored since they're computed from the simple params.
 
 ## License
 
